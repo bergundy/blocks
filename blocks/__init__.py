@@ -12,7 +12,7 @@ from tornado.concurrent import Future
 import mock
 import greenlet
 
-__all__ = ['Socket']
+__all__ = ['Socket', 'green']
 
 version_tuple = (0, 1, '+')
 
