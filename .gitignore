@@ -1,0 +1,3 @@
+.pyenv
+*.py[doc]
+.*.sw[op]
