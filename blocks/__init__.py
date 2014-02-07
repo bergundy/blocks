@@ -9,7 +9,6 @@ import warnings
 
 from tornado import ioloop, iostream, gen, stack_context, netutil
 from tornado.concurrent import Future
-import mock
 import greenlet
 
 __all__ = ['Socket', 'green']
@@ -35,6 +34,46 @@ except ImportError:
 
 
 callback_type_error = TypeError("callback must be a callable")
+
+
+class Patch(object):
+    orig_socket = socket.socket
+    orig_create_connection = socket.create_connection
+
+    def __init__(self):
+        self._active = False
+
+    @property
+    def active(self):
+        return self._active
+
+    def start(self):
+        setattr(socket, 'socket', self.socket)
+        #TODO: setattr(socket, 'create_connection', self.create_connection)
+        self._active = True
+
+    def stop(self):
+        setattr(socket, 'socket', self.orig_socket)
+        #TODO: setattr(socket, 'create_connection', self.orig_create_connection)
+        self._active = False
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, type_, value, traceback):
+        self.stop()
+
+    def socket(self, *args, **kwargs):
+        child_gr = greenlet.getcurrent()
+        main = child_gr.parent
+        if main:
+            return Socket(*args, **kwargs)
+        else:
+            return self.orig_socket(*args, **kwargs)
+
+
+patch = Patch()
 
 
 def blocking_sock_method(method):
@@ -151,11 +190,13 @@ class Socket(StreamWrapper):
 
         if sock is None:
             self.timeout = None
+            patch_was_active = patch.active
             patch.stop()
             try:
                 sock = socket.socket(*args, **kwargs)
             finally:
-                patch.start()
+                if patch_was_active:
+                    patch.start()
         self.stream = iostream.IOStream(sock)
 
     def setsockopt(self, *args, **kwargs):
@@ -208,9 +249,6 @@ class File(StreamWrapper):
     def readline(self, size=None, callback=None):
         # TODO: implement size
         self.stream.read_until('\r\n', callback)
-
-
-patch = mock.patch.object(socket, 'socket', side_effect=Socket)
 
 
 def green(fn):
